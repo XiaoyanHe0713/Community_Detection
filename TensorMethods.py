@@ -1,8 +1,10 @@
 import torch
 import numpy as np
 from tensorly.decomposition import tucker
+import tensorly as tl
 
 def unfold(tensor, mode):
+    
     return torch.reshape(torch.moveaxis(tensor, mode, 0), (tensor.shape[mode], -1))
 
 def fold(unfolded_tensor, mode, shape):
@@ -38,7 +40,29 @@ def diag(A):
     return diag_A
         
 def multi_mode_dot(tensor, matrix_or_vec_list, modes=None, skip=None, transpose=False):
-    """Chain several mode_dot (n-mode product) in one go"""
+    """Chain several mode_dot (n-mode product) in one go
+    
+    Parameters
+    ----------
+    tensor : torch tensor
+        tensor of shape ``(i_1, ..., i_k, ..., i_N)``
+    matrix_or_vec_list : list of torch tensors
+        list of 1D or 2D arrays
+        matrix or vectors to which to n-mode multiply the tensor
+    modes : int list, optional
+        list of the modes on which to perform the n-mode product
+    skip : int, optional
+        if not None, the mode to skip
+    transpose : bool, default is False
+        If True, the matrix is transposed.
+    
+    Returns
+    -------
+    torch tensor
+    `mode`-mode product of `tensor` by `matrix_or_vector`
+        * of shape :math:`(i_1, ..., i_{k-1}, J, i_{k+1}, ..., i_N)` if matrix_or_vector is a matrix
+        * of shape :math:`(i_1, ..., i_{k-1}, i_{k+1}, ..., i_N)` if matrix_or_vector is a vector
+    """
     if modes is None:
         modes = range(len(matrix_or_vec_list))
 
@@ -78,11 +102,10 @@ def mode_dot(tensor, matrix_or_vector, mode, transpose=False):
     mode : int
     transpose : bool, default is False
         If True, the matrix is transposed.
-        For complex tensors, the conjugate transpose is used.
 
     Returns
     -------
-    ndarray
+    torch tensor
         `mode`-mode product of `tensor` by `matrix_or_vector`
         * of shape :math:`(i_1, ..., i_{k-1}, J, i_{k+1}, ..., i_N)` if matrix_or_vector is a matrix
         * of shape :math:`(i_1, ..., i_{k-1}, i_{k+1}, ..., i_N)` if matrix_or_vector is a vector
@@ -130,3 +153,43 @@ def mode_dot(tensor, matrix_or_vector, mode, transpose=False):
         return torch.reshape(res, shape=new_shape)
     else:  # tensor times vec: refold the unfolding
         return fold(res, fold_mode, new_shape)
+    
+def tucker_to_tensor(tucker_tensor, skip_factor=None, transpose_factors=False):
+    """Converts the Tucker tensor into a full tensor
+
+    Parameters
+    ----------
+    tucker_tensor : tl.TuckerTensor or (core, factors)
+        core tensor and list of factor matrices
+    skip_factor : None or int, optional, default is None
+        if not None, index of a matrix to skip
+        Note that in any case, `modes`, if provided, should have a lengh of ``tensor.ndim``
+    transpose_factors : bool, optional, default is False
+        if True, the matrices or vectors in in the list are transposed
+
+    Returns
+    -------
+    torch tensor
+       full tensor of shape ``(factors[0].shape[0], ..., factors[-1].shape[0])``
+    """
+    core, factors = tucker_tensor
+    return multi_mode_dot(core, factors, skip=skip_factor, transpose=transpose_factors)
+
+def tucker_decomp(tensor, rank, n_iter_max=100):
+    """Tucker decomposition of a tensor
+
+    Parameters
+    ----------
+    tensor : torch tensor
+    rank : int list
+        rank of the decomposition
+
+    Returns
+    -------
+    core : torch tensor
+        core tensor of the Tucker decomposition
+    factors : list of torch tensors
+        list of factor matrices
+    """
+    tl.set_backend('pytorch')
+    return tucker(tensor, rank, n_iter_max=n_iter_max)
