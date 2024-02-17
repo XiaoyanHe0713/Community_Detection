@@ -1,0 +1,116 @@
+import numpy as np
+import torch
+import pandas as pd
+import networkx as nx
+import hypernetx as hnx
+import itertools
+from TensorMethods import *
+
+def generate_random_uniform_hypergraph(n_nodes, n_hyperedges, nodes_per_hyperedge):
+    """
+    Generate a random m-uniform hypergraph with n_nodes nodes, n_hyperedges hyperedges, and max_nodes_per_hyperedge nodes per hyperedge.
+    Parameters
+    ----------
+    n_nodes : int
+        Number of nodes in the hypergraph
+    n_hyperedges : int
+        Number of hyperedges in the hypergraph
+    max_nodes_per_hyperedge : int
+        Maximum number of nodes per hyperedge
+    Returns
+    -------
+    H : hypernetx.Hypergraph
+        Random uniform hypergraph
+    """
+    nodes = list(range(n_nodes))
+    edges = list(range(n_hyperedges))
+    m = nodes_per_hyperedge
+
+    # Generate random hyperedges
+    hyperedges = {e: np.random.choice(nodes, m, replace=False) for e in edges}
+
+    # Create the hypergraph
+    H = hnx.Hypergraph(hyperedges)
+
+    return H
+
+def adjacency_tensor(H, n_nodes):
+    """
+    Compute the adjacency tensor of a m-uniform hypergraph.
+    Parameters
+    ----------
+    H : hypernetx.Hypergraph
+        Hypergraph
+    Returns
+    -------
+    A : torch tensor
+        Adjacency tensor of the hypergraph
+    """
+    m = len(H.edges[0])
+
+    hyperedges = H.incidence_dict
+
+    # Dimension of the adjacency tensor is \underbrace{n_nodes \times \cdots \times n_nodes}_{m}
+    dim = [n_nodes] * m
+
+    # Initialize the adjacency tensor
+    A = torch.zeros(dim)
+
+    # For all 1 ≤ i1, . . . , im ≤ n, set A(i1, . . . , im) = 1 if {i1, . . . , im} ∈ E, and 0 otherwise
+    for i in H.edges:
+        # Check if the hyperedge has the right number of nodes (m)
+        hyperedge = hyperedges[i]
+        if len(hyperedge) != m:
+            raise ValueError("All hyperedges must have exactly {} nodes".format(m))
+        
+        # Set the adjacency tensor to 1 for all permutations of the hyperedge
+        for perm in itertools.permutations(hyperedge):
+            A[perm] = 1
+
+    return A
+
+
+def adjacency_to_hypergraph(A):
+    """
+    Convert an adjacency tensor to a hypergraph.
+    Parameters
+    ----------
+    A : torch tensor
+        Adjacency tensor
+    Returns
+    -------
+    H : hypernetx.Hypergraph
+        Hypergraph
+    """
+    # Get the number of nodes
+    n_nodes = A.shape[0]
+
+    # Get the number of dimensions
+    m = len(A.shape)
+
+    # Initialize the hyperedges
+    hyperedges = dict()
+    list_e = []
+
+    # Get all the indices where A is 1
+    indices = torch.nonzero(A).tolist()
+
+    # if an index is a permutation of another index, we only need to add one of them
+    # to the list of hyperedges
+
+    # Iterate over all indices
+    i = 0
+    for index in indices:
+            # Check if the index is a permutation of another index
+            is_true = False
+            for perm in itertools.permutations(index):
+                if perm not in list_e:
+                    list_e.append(perm)
+                    is_true = True
+            if is_true:
+                hyperedges[i] = index
+                i += 1
+    
+    # Create the hypergraph
+    H = hnx.Hypergraph(hyperedges)
+                
