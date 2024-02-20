@@ -113,4 +113,41 @@ def adjacency_to_hypergraph(A):
     
     # Create the hypergraph
     H = hnx.Hypergraph(hyperedges)
-                
+
+    return H
+
+def NonUniform_to_Uniform(H):
+    """
+    Convert a non-uniform hypergraph to a sequence of uniform hypergraphs.
+    Parameters
+    ----------
+    H : hypernetx.Hypergraph
+        Non-uniform hypergraph
+    Returns
+    -------
+    H_seq : list of hypernetx.Hypergraph
+        Sequence of uniform hypergraphs
+    """
+    # Get the number of nodes
+    n_nodes = len(H.nodes)
+
+    # Classify the hyperedges into different groups based on the number of nodes in each hyperedge
+    groups = dict()
+    for e in H.edges:
+        m = len(H.incidence_dict[e])
+        if m not in groups:
+            groups[m] = []
+        groups[m].append(e)
+
+    # Convert each group of hyperedges to a uniform hypergraph
+    H_seq = []
+    for m, edges in groups.items():
+        # Create a uniform hypergraph
+        incidence_dict = dict()
+        for i, e in enumerate(edges):
+            incidence_dict[i] = e
+
+        # Add the uniform hypergraph to the sequence
+        H_seq.append(hnx.Hypergraph(incidence_dict))
+
+    return H_seq
