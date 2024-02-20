@@ -4,6 +4,8 @@ import networkx as nx
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import torch
+from HyperNetwork import *
+import hypernetx as hnx
 from numpy.linalg import svd
 from scipy.linalg import orth
 import SCORE
@@ -37,3 +39,18 @@ if __name__ == "__main__":
     ax.set_title("Graph with True Communities")  # Set the title on the axes object
 
     plt.show()  # Display the figure
+
+if __name__ == "__tensor__":
+    K = 3
+    
+    # Generate a random uniform hypergraph
+    n_nodes = 10
+    n_hyperedges = 5
+    nodes_per_hyperedge = 4
+    H = generate_random_uniform_hypergraph(n_nodes, n_hyperedges, nodes_per_hyperedge)
+
+    # Tensor_SCORE on H
+    labels = Tensor_SCORE(H, K)
+
+    # Visualize the hypergraph with predicted community labels
+    visualize_hypergraph(H, labels)
