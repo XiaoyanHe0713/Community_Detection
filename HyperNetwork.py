@@ -194,7 +194,22 @@ def Tensor_SCORE(H, K, n_iter_max=100):
     """
     # Check if the hypergraph is uniform
     if not if_Uniform(H):
-        pass
+        H_seq = NonUniform_to_Uniform(H)
+
+        R_hat = torch.empty(0, K - 1)
+        for H in H_seq:
+            A = adjacency_tensor(H, len(H.nodes))
+            core, factors = tucker_decomp(A, [K] * len(A.shape), n_iter_max=n_iter_max)
+            factor = factors[0]
+            factor = scale_invariant(factor)
+
+            # Concatenate the factor matrices
+            R_hat = torch.cat((R_hat, factor[:, 1:]), dim=0)
+
+            kmeans = KMeans(n_clusters=K, random_state=0).fit(R_hat)
+            labels = kmeans.labels_
+
+        return labels
 
     # Convert the hypergraph to an adjacency tensor
     A = adjacency_tensor(H, len(H.nodes))
@@ -207,10 +222,26 @@ def Tensor_SCORE(H, K, n_iter_max=100):
 
     # Apply scale-invariant to the factor matrix
     factor = scale_invariant(factor)
-    factor = factor[:, 1:]
+    R_hat = factor[:, 1:]
 
     # Apply K-mean Clustering to the rows of factor matrix
-    kmeans = KMeans(n_clusters=K, random_state=0).fit(factor)
+    kmeans = KMeans(n_clusters=K, random_state=0).fit(R_hat)
     labels = kmeans.labels_
 
     return labels
+
+def visualize_hypergraph(H, labels):
+    """
+    Visualize a hypergraph with predicted community labels.
+    Parameters
+    ----------
+    H : hypernetx.Hypergraph
+        Hypergraph
+    labels : list
+        Predicted community labels
+    """
+    # Create a dictionary of nodes and their community labels
+    node_labels = {n: l for n, l in zip(H.nodes, labels)}
+
+    # Draw the hypergraph with predicted community labels
+    hnx.draw(H, node_labels=node_labels)
