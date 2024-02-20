@@ -193,3 +193,16 @@ def tucker_decomp(tensor, rank, n_iter_max=100):
     """
     tl.set_backend('pytorch')
     return tucker(tensor, rank, n_iter_max=n_iter_max)
+
+def scale_invariant(matrix):
+    """Scale-invariant tensor, proposed the following row-wise normalization on given matrix
+    Parameters
+    ----------
+    matrix : torch tensor
+    Returns
+    -------
+    torch tensor
+        scale-invariant matrix
+    """
+    # For each row, divide by the first coordinate of the row
+    return matrix / matrix[:, 0].unsqueeze(1)

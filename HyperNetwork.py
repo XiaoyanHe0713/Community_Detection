@@ -5,6 +5,7 @@ import networkx as nx
 import hypernetx as hnx
 import itertools
 from TensorMethods import *
+from sklearn.cluster import KMeans
 
 def generate_random_uniform_hypergraph(n_nodes, n_hyperedges, nodes_per_hyperedge):
     """
@@ -151,3 +152,65 @@ def NonUniform_to_Uniform(H):
         H_seq.append(hnx.Hypergraph(incidence_dict))
 
     return H_seq
+
+def if_Uniform(H):
+    """
+    Check if a hypergraph is uniform.
+    Parameters
+    ----------
+    H : hypernetx.Hypergraph
+        Hypergraph
+    Returns
+    -------
+    bool
+        True if the hypergraph is uniform, False otherwise
+    """
+    # Classify the hyperedges into different groups based on the number of nodes in each hyperedge
+    groups = dict()
+    for e in H.edges:
+        m = len(H.incidence_dict[e])
+        if m not in groups:
+            groups[m] = []
+        groups[m].append(e)
+
+    # If there is only one group, the hypergraph is uniform
+    return len(groups) == 1
+
+def Tensor_SCORE(H, K, n_iter_max=100):
+    """
+    Apply the SCORE method to a hypergraph.
+    Parameters
+    ----------
+    H : hypernetx.Hypergraph
+        Hypergraph
+    K : int
+        Number of communities
+    n_iter_max : int, default is 100
+        Maximum number of iterations
+    Returns
+    -------
+    labels : list
+        Predicted community labels
+    """
+    # Check if the hypergraph is uniform
+    if not if_Uniform(H):
+        pass
+
+    # Convert the hypergraph to an adjacency tensor
+    A = adjacency_tensor(H, len(H.nodes))
+
+    # Apply the Tucker decomposition to find the factor matrices
+    core, factors = tucker_decomp(A, [K] * len(A.shape), n_iter_max=n_iter_max)
+
+    # The adjacency tensor must be symmetric, then the factor matrices are same, so we can use the first one
+    factor = factors[0]
+
+    # Apply scale-invariant to the factor matrix
+    factor = scale_invariant(factor)
+    factor = factor[:, 1:]
+
+    # Apply K-mean Clustering to the rows of factor matrix
+    kmeans = KMeans(n_clusters=K, random_state=0).fit(factor)
+    labels = kmeans.labels_
+
+    return labels
