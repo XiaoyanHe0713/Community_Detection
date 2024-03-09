@@ -221,44 +221,44 @@ def HOOI(tensor, ranks, n_iter_max=100, tol=1e-8):
     # Initialize R and V factor matrices with orthonormal columns
     I, J, K = tensor.shape
     R = ortho_group.rvs(J)[:,:ranks[1]]
-    R = torch.tensor(R, dtype=torch.float32)
+    R_hat = torch.tensor(R, dtype=torch.float32)
     V = ortho_group.rvs(K)[:,:ranks[2]]
-    V = torch.tensor(V, dtype=torch.float32)
+    V_hat = torch.tensor(V, dtype=torch.float32)
 
     for _ in range(n_iter_max):
         # C = A ×2 R^T ×3 V^T
-        C = multi_mode_dot(tensor, [R.T, V.T], modes=[1, 2])
-        C_1 = unfold(tensor, 0)
+        c = multi_mode_dot(tensor, [R_hat.T, V_hat.T], modes=[1, 2])
+        c_1 = unfold(c, 0)
 
         # L = SVD(r1, C_1), where U = SVD(k, C) means compute the k’th order truncated 
         # SVD of C and then set U = [u1, u2, . . . , uk] to the matrix whose columns are 
         # the k largest left singular vectors ui of C
-        U, _, _ = torch.svd(C_1)
-        L = U[:, :ranks[0]]
+        u, _, _ = torch.svd(c_1)
+        L_hat = u[:, :ranks[0]]
 
         # D = A ×1 L^T ×3 V^T
-        D = multi_mode_dot(tensor, [L.T, V.T], modes=[0, 2])
-        D_2 = unfold(tensor, 1)
+        d = multi_mode_dot(tensor, [L_hat.T, V_hat.T], modes=[0, 2])
+        d_2 = unfold(d, 1)
 
         #R = SVD(r2, D_2)
-        U, _, _ = torch.svd(D_2)
-        R = U[:, :ranks[1]]
+        u, _, _ = torch.svd(d_2)
+        R_hat = u[:, :ranks[1]]
 
         # E = A ×1 L^T ×2 R^T
-        E = multi_mode_dot(tensor, [L.T, R.T], modes=[0, 1])
-        E_3 = unfold(tensor, 2)
+        e = multi_mode_dot(tensor, [L_hat.T, R_hat.T], modes=[0, 1])
+        e_3 = unfold(e, 2)
 
         # V = SVD(r3, E_3)
-        U, _, _ = torch.svd(E_3)
-        V = U[:, :ranks[2]]
+        u, _, _ = torch.svd(e_3)
+        V_hat = u[:, :ranks[2]]
 
         # Compute the approximation error
-        core_tensor = n_mode_product(E, V.T, 2)
-        appr = multi_mode_dot(core_tensor, [L, R, V], modes=[0, 1, 2])
+        core_tensor = n_mode_product(e, V_hat.T, 2)
+        appr = multi_mode_dot(core_tensor, [L_hat, R_hat, V_hat], modes=[0, 1, 2])
         if torch.norm(tensor - appr) < tol:
             break
 
-    return core_tensor, [L, R, V]
+    return core_tensor, [L_hat, R_hat, V_hat]
 
 
 
