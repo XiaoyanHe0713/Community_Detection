@@ -253,12 +253,10 @@ def HOOI(tensor, ranks, n_iter_max=100, tol=1e-8):
         V = U[:, :ranks[2]]
 
         # Compute the approximation error
-        approx_tensor = n_mode_product(E, V.T, 2)
-        if torch.norm(tensor - approx_tensor) < tol:
+        core_tensor = n_mode_product(E, V.T, 2)
+        appr = multi_mode_dot(core_tensor, [L, R, V], modes=[0, 1, 2])
+        if torch.norm(tensor - appr) < tol:
             break
-
-    # Compute the core tensor
-    core_tensor = n_mode_product(E, V.T, 2)
 
     return core_tensor, [L, R, V]
 
