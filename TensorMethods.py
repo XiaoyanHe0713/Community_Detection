@@ -4,6 +4,7 @@ from tensorly.decomposition import tucker
 import tensorly as tl
 from scipy.stats import ortho_group
 import tensorflow as tf
+from sklearn.decomposition import TruncatedSVD
 
 def n_mode_product(x, u, n):
     """n-mode product of a tensor and a matrix at the specified mode
@@ -213,9 +214,9 @@ def HOOI(tensor, ranks, n_iter_max=100, tol=1e-8):
     - eps: Convergence criterion.
 
     Returns:
-    - L, R, V factor matrices.
-    L ∈ R^I×r1, R ∈ R^J×r2, V ∈ R^K×r3.
     - core_tensor: Core tensor of the Tucker decomposition.
+    - [L, R, V] factor matrices.
+    L ∈ R^I×r1, R ∈ R^J×r2, V ∈ R^K×r3.
     """
     # Initialize R and V factor matrices with orthonormal columns
     I, J, K = tensor.shape
@@ -227,6 +228,41 @@ def HOOI(tensor, ranks, n_iter_max=100, tol=1e-8):
     for _ in range(n_iter_max):
         # C = A ×2 R^T ×3 V^T
         C = multi_mode_dot(tensor, [R.T, V.T], modes=[1, 2])
+        C_1 = unfold(tensor, 0)
+
+        # L = SVD(r1, C_1), where U = SVD(k, C) means compute the k’th order truncated 
+        # SVD of C and then set U = [u1, u2, . . . , uk] to the matrix whose columns are 
+        # the k largest left singular vectors ui of C
+        U, _, _ = torch.svd(C_1)
+        L = U[:, :ranks[0]]
+
+        # D = A ×1 L^T ×3 V^T
+        D = multi_mode_dot(tensor, [L.T, V.T], modes=[0, 2])
+        D_2 = unfold(tensor, 1)
+
+        #R = SVD(r2, D_2)
+        U, _, _ = torch.svd(D_2)
+        R = U[:, :ranks[1]]
+
+        # E = A ×1 L^T ×2 R^T
+        E = multi_mode_dot(tensor, [L.T, R.T], modes=[0, 1])
+        E_3 = unfold(tensor, 2)
+
+        # V = SVD(r3, E_3)
+        U, _, _ = torch.svd(E_3)
+        V = U[:, :ranks[2]]
+
+        # Compute the approximation error
+        approx_tensor = n_mode_product(E, V.T, 2)
+        if torch.norm(tensor - approx_tensor) < tol:
+            break
+
+    # Compute the core tensor
+    core_tensor = n_mode_product(E, V.T, 2)
+
+    return core_tensor, [L, R, V]
+
+
 
 def scale_invariant(matrix):
     """Scale-invariant tensor, proposed the following row-wise normalization on given matrix
