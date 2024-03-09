@@ -2,6 +2,37 @@ import torch
 import numpy as np
 from tensorly.decomposition import tucker
 import tensorly as tl
+from scipy.stats import ortho_group
+import tensorflow as tf
+
+def n_mode_product(x, u, n):
+    """n-mode product of a tensor and a matrix at the specified mode
+
+    Mathematically: :math:`\\text{tensor} \\times_{\\text{n}} \\text{matrix}`
+    Parameters
+    ----------
+    x : torch tensor
+        tensor of shape ``(i_1, ..., i_k, ..., i_N)``
+    u : torch tensor
+        matrix of shape ``(J, i_k)``
+    n : int
+        mode along which to take the product
+
+    Returns
+    -------
+    torch tensor
+        n-mode product of tensor by matrix
+        * of shape :math:`(i_1, ..., i_{k-1}, J, i_{k+1}, ..., i_N)`
+    """
+    n = int(n)
+    # We need one letter per dimension
+    # (maybe you could find a workaround for this limitation)
+    if n > 26:
+        raise ValueError('n is too large.')
+    ind = ''.join(chr(ord('a') + i) for i in range(n))
+    exp = f'{ind}K...,JK->{ind}J...'
+    result = tf.einsum(exp, x, u)
+    return torch.tensor(result.numpy())
 
 def unfold(tensor, mode):
     
@@ -39,22 +70,18 @@ def diag(A):
     
     return diag_A
         
-def multi_mode_dot(tensor, matrix_or_vec_list, modes=None, skip=None, transpose=False):
+def multi_mode_dot(tensor, matrices, modes):
     """Chain several mode_dot (n-mode product) in one go
     
     Parameters
     ----------
     tensor : torch tensor
         tensor of shape ``(i_1, ..., i_k, ..., i_N)``
-    matrix_or_vec_list : list of torch tensors
+    matrices : list of torch tensors
         list of 1D or 2D arrays
         matrix or vectors to which to n-mode multiply the tensor
     modes : int list, optional
         list of the modes on which to perform the n-mode product
-    skip : int, optional
-        if not None, the mode to skip
-    transpose : bool, default is False
-        If True, the matrix is transposed.
     
     Returns
     -------
@@ -63,28 +90,9 @@ def multi_mode_dot(tensor, matrix_or_vec_list, modes=None, skip=None, transpose=
         * of shape :math:`(i_1, ..., i_{k-1}, J, i_{k+1}, ..., i_N)` if matrix_or_vector is a matrix
         * of shape :math:`(i_1, ..., i_{k-1}, i_{k+1}, ..., i_N)` if matrix_or_vector is a vector
     """
-    if modes is None:
-        modes = range(len(matrix_or_vec_list))
-
-    decrement = 0  # If we multiply by a vector, we diminish the dimension of the tensor
-
     res = tensor
-
-    # Order of mode dots doesn't matter for different modes
-    # Sorting by mode shouldn't change order for equal modes
-    factors_modes = sorted(zip(matrix_or_vec_list, modes), key=lambda x: x[1])
-    for i, (matrix_or_vec, mode) in enumerate(factors_modes):
-        if (skip is not None) and (i == skip):
-            continue
-
-        if transpose:
-            res = mode_dot(res, torch.conj(torch.transpose(matrix_or_vec)), mode - decrement)
-        else:
-            res = mode_dot(res, matrix_or_vec, mode - decrement)
-
-        if torch.ndim(matrix_or_vec) == 1:
-            decrement += 1
-
+    for mode, matrix in zip(modes, matrices):
+        res = n_mode_product(res, matrix, mode)
     return res
 
 def mode_dot(tensor, matrix_or_vector, mode, transpose=False):
@@ -114,7 +122,7 @@ def mode_dot(tensor, matrix_or_vector, mode, transpose=False):
     fold_mode = mode
     new_shape = list(tensor.shape)
 
-    if torch.ndim(matrix_or_vector) == 2:  # Tensor times matrix
+    if matrix_or_vector.dim() == 2:  # Tensor times matrix
         # Test for the validity of the operation
         dim = 0 if transpose else 1
         if matrix_or_vector.shape[dim] != tensor.shape[mode]:
@@ -129,7 +137,7 @@ def mode_dot(tensor, matrix_or_vector, mode, transpose=False):
         new_shape[mode] = matrix_or_vector.shape[0]
         vec = False
 
-    elif torch.ndim(matrix_or_vector) == 1:  # Tensor times vector
+    elif matrix_or_vector.dim() == 1:  # Tensor times vector
         if matrix_or_vector.shape[0] != tensor.shape[mode]:
             raise ValueError(
                 f"shapes {tensor.shape} and {matrix_or_vector.shape} not aligned for mode-{mode} multiplication: "
@@ -193,6 +201,32 @@ def tucker_decomp(tensor, rank, n_iter_max=100):
     """
     tl.set_backend('pytorch')
     return tucker(tensor, rank, n_iter_max=n_iter_max)
+
+def HOOI(tensor, ranks, n_iter_max=100, tol=1e-8):
+    """High-Order Orthogonal Iteration (HOOI) algorithm for Tucker decomposition
+    Perform Higher Order Orthogonal Iteration (HOOI) on a 3D tensor.
+
+    Parameters:
+    - tensor: Input tensor of size I x J x K.
+    - ranks: Tuple of target ranks (r1, r2, r3).
+    - n_iter_max: Maximum number of iterations.
+    - eps: Convergence criterion.
+
+    Returns:
+    - L, R, V factor matrices.
+    L ∈ R^I×r1, R ∈ R^J×r2, V ∈ R^K×r3.
+    - core_tensor: Core tensor of the Tucker decomposition.
+    """
+    # Initialize R and V factor matrices with orthonormal columns
+    I, J, K = tensor.shape
+    R = ortho_group.rvs(J)[:,:ranks[1]]
+    R = torch.tensor(R, dtype=torch.float32)
+    V = ortho_group.rvs(K)[:,:ranks[2]]
+    V = torch.tensor(V, dtype=torch.float32)
+
+    for _ in range(n_iter_max):
+        # C = A ×2 R^T ×3 V^T
+        C = multi_mode_dot(tensor, [R.T, V.T], modes=[1, 2])
 
 def scale_invariant(matrix):
     """Scale-invariant tensor, proposed the following row-wise normalization on given matrix
