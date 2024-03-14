@@ -240,7 +240,7 @@ def HOOI(tensor, ranks, n_iter_max=100, tol=1e-8):
         d = multi_mode_dot(tensor, [L_hat.T, V_hat.T], modes=[0, 2])
         d_2 = unfold(d, 1)
 
-        #R = SVD(r2, D_2)
+        # R = SVD(r2, D_2)
         u, _, _ = torch.svd(d_2)
         R_hat = u[:, :ranks[1]]
 
